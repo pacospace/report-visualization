@@ -24,7 +24,8 @@ from typing import List
 
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.offline import iplot
+
+from typing import Optional, Dict
 
 pd.options.plotting.backend = "plotly"
 
@@ -45,6 +46,118 @@ _PERFORMANCE_QUANTITY_MAP = {"elapsed_time": "Elapsed Time [ms]", "rate": "Rate 
 
 class AmunInspectionsVisualization:
     """Class of methods used to create statistics from Amun Inspections Runs."""
+
+    @staticmethod
+    def plot_analysis_parameter_results(
+        plot_df: pd.DataFrame,
+        analysis_parameter: str,
+        performance_parameter: str,
+        colors: Dict[str, str],
+        percentage: bool = False,
+        old: Optional[str] = None,
+        new: Optional[str] = None,
+        old_colour: Optional[str] = None,
+        new_colour: Optional[str] = None,
+    ):
+        """Plot performance results."""
+        data = []
+
+        analysis_parameter_info = {
+            "python_interpreter": "Python Interpreter",
+            "operating_system": "Operating System",
+            "standardized_identifier": "Identifier",
+        }
+
+        if analysis_parameter not in analysis_parameter_info:
+            raise Exception(
+                f"{analysis_parameter} not known. Analysis parameters are: {analysis_parameter_info.keys()}"
+            )
+
+        title_info = {
+            "python_interpreter": "Python Interpreter",
+            "operating_system": "Operating System",
+            "standardized_identifier": "Software stacks",
+        }
+
+        performance_parameter_info = {"rate": "Rate [GFLOPS]", "elapsed_time": "Elapsed time [ms]"}
+
+        plot_df["operating_system"] = plot_df["os_name"] + "-" + plot_df["os_version"]
+
+        if performance_parameter not in performance_parameter_info:
+            raise Exception(
+                f"{performance_parameter} not known. Performance parameters are: {performance_parameter_info.keys()}"
+            )
+
+        title_text = f"<b>TF builds performance with different {title_info[analysis_parameter]}"
+        annotations = []
+
+        if percentage:
+            difference_percentages = []
+
+            for pi in plot_df["pi_name"].unique():
+                pi_df = plot_df[(plot_df["pi_name"] == pi)]
+
+                new_values_df = pi_df[(pi_df[analysis_parameter] != old)]
+                old_value = pi_df[(pi_df[analysis_parameter] == old)][performance_parameter].values
+
+                for index, row in new_values_df[[performance_parameter, analysis_parameter]].iterrows():
+                    new_value = row[performance_parameter]
+                    difference = new_value - old_value
+                    difference_percentage = difference / old_value * 100
+                    difference_percentages.append(
+                        {
+                            "old": old,
+                            "new": new,
+                            analysis_parameter: row[analysis_parameter],
+                            "pi_name": f"{pi}",
+                            "percentage_difference": difference_percentage[0],
+                        }
+                    )
+                    result = difference_percentage[0]
+
+                    y_place = min(pi_df[performance_parameter].values)
+                    text_place = "<b>{:.3f}%</b>".format(result)
+
+                    if result > 0:
+                        y_place = max(pi_df[performance_parameter].values)
+                        text_place = "<b>+{:.3f}%</b>".format(result)
+
+                    annotations.append(
+                        dict(
+                            x=f"{pi}",
+                            y=y_place,
+                            xref="x",
+                            yref="y",
+                            text=text_place,
+                            showarrow=True,
+                            arrowhead=7,
+                            ax=0,
+                            ay=-40,
+                        )
+                    )
+            title_text = (
+                f"<b>TF builds performance changes for {title_info[analysis_parameter]} from {old} to {new} </b>"
+            )
+
+        for param in plot_df[analysis_parameter].unique():
+            param_df = plot_df[(plot_df[analysis_parameter] == param)]
+            y = param_df[performance_parameter].values
+            data.append(go.Bar(name=param, x=param_df["pi_name"].values, y=y, text=y, marker={"color": colors[param]}))
+
+        fig = go.Figure(data=data)
+        # Change the bar mode
+        fig.update_traces(texttemplate="<b>%{text:.3f}</b>", textposition="outside")
+        fig.update_layout(
+            xaxis_title="Performance Indicators",
+            yaxis_title=f"{performance_parameter_info[performance_parameter]}",
+            barmode="group",
+            title_text=title_text,
+            yaxis=dict(rangemode="tozero"),
+            legend=dict(title=analysis_parameter_info[analysis_parameter]),
+            annotations=annotations,
+        )
+
+        return fig
 
     @staticmethod
     def create_inspection_3d_plot(plot_df: pd.DataFrame, quantity: str, identifiers_inspections: List[str]):
@@ -115,7 +228,7 @@ class AmunInspectionsVisualization:
         )
         fig = go.Figure(data=data, layout=layout)
 
-        iplot(fig, filename="3d-scatter-colorscale")
+        return fig
 
     @staticmethod
     def create_inspection_2d_plot(
@@ -189,4 +302,4 @@ class AmunInspectionsVisualization:
         )
         fig = go.Figure(data=data, layout=layout)
 
-        iplot(fig, filename="scatter-colorscale")
+        return fig
